@@ -1,8 +1,8 @@
 class Player {
   constructor(game) {
     this.game = game
-    this.width = 100
-    this.height = 100
+    this.width = 140
+    this.height = 120
     this.x = this.game.width * 0.5 - this.width * 0.5
     this.y = this.game.height - this.height
     this.speed = 5
@@ -13,16 +13,55 @@ class Player {
       restart: 'r',
     }
     this.lives = 3
+    this.maxLives = 10
+    this.image = document.getElementById('player')
+    this.jetsImage = document.getElementById('player_jets')
+    this.frameX = 0
+    this.jetsFrame = 1
   }
 
   draw(context) {
-    context.fillRect(this.x, this.y, this.height, this.width)
+    // handle sprite frames
+    if (this.game.hasKey(this.controls.shoot)) {
+      this.frameX = 1
+    } else {
+      this.frameX = 0
+    }
+    context.drawImage(
+      this.jetsImage,
+      this.jetsFrame * this.width,
+      0,
+      this.width,
+      this.height,
+      this.x,
+      this.y,
+      this.width,
+      this.height,
+    )
+    context.drawImage(
+      this.image,
+      this.frameX * this.width,
+      0,
+      this.width,
+      this.height,
+      this.x,
+      this.y,
+      this.width,
+      this.height,
+    )
   }
 
   update() {
     // horizontal movement
-    if (this.game.hasKey(this.controls.right)) this.x += this.speed
-    if (this.game.hasKey(this.controls.left)) this.x -= this.speed
+    if (this.game.hasKey(this.controls.right)) {
+      this.x += this.speed
+      this.jetsFrame = 0
+    } else if (this.game.hasKey(this.controls.left)) {
+      this.x -= this.speed
+      this.jetsFrame = 2
+    } else {
+      this.jetsFrame = 1
+    }
 
     // horizontal boundaries restrictions
     if (this.x < -this.width * 0.5) this.x = -this.width * 0.5
@@ -44,8 +83,8 @@ class Player {
 
 class Projectile {
   constructor() {
-    this.width = 8
-    this.height = 20
+    this.width = 3
+    this.height = 40
     this.x = 0
     this.y = 0
     this.speed = 20
@@ -54,7 +93,10 @@ class Projectile {
 
   draw(context) {
     if (!this.free) {
+      context.save()
+      context.fillStyle = 'gold'
       context.fillRect(this.x, this.y, this.width, this.height)
+      context.restore()
     }
   }
 
@@ -90,7 +132,17 @@ class Enemy {
   }
 
   draw(context) {
-    context.strokeRect(this.x, this.y, this.width, this.height)
+    context.drawImage(
+      this.image,
+      this.frameX * this.width,
+      this.frameY * this.width,
+      this.width,
+      this.height,
+      this.x,
+      this.y,
+      this.width,
+      this.height,
+    )
   }
 
   update(x, y) {
@@ -99,37 +151,59 @@ class Enemy {
 
     //check collision enemies - projectile
     this.game.projectilePool.forEach(projectile => {
-      if (!projectile.free && this.game.checkCollision(this, projectile)) {
-        this.markedForDeletion = true
+      if (
+        !projectile.free &&
+        this.game.checkCollision(this, projectile) &&
+        this.lives > 0
+      ) {
+        this.hit(1)
         projectile.reset()
-        if (!this.game.gameOver) this.game.score++
       }
     })
+    if (this.lives < 1) {
+      if (this.game.spriteUpdate) this.frameX++
+      if (this.frameX > this.maxFrame) {
+        this.markedForDeletion = true
+        if (!this.game.gameOver) this.game.score += this.maxLives
+      }
+    }
 
     // check collision enemies - player
-    if (this.game.checkCollision(this, this.game.player)) {
-      this.markedForDeletion = true
-      if (!this.game.gameOver && this.game.score > 0) this.game.score--
+    if (this.game.checkCollision(this, this.game.player) && this.lives > 0) {
+      this.lives = 0
       this.game.player.lives--
-      if (this.game.player.lives < 1) this.game.gameOver = true
     }
 
     // lose condition
-    if (this.y + this.height > this.game.height) {
+    if (this.y + this.height > this.game.height || this.game.player.lives < 1) {
       this.game.gameOver = true
-      this.markedForDeletion = true
     }
+  }
+  hit(damage) {
+    this.lives -= damage
+  }
+}
+
+class Beetlemorph extends Enemy {
+  constructor(game, positionX, positionY) {
+    super(game, positionX, positionY)
+    this.image = document.getElementById('beetlemorph')
+    this.frameX = 0
+    this.maxFrame = 2
+    this.frameY = Math.floor(Math.random() * 4)
+    this.lives = 3
+    this.maxLives = this.lives
   }
 }
 
 class Wave {
   constructor(game) {
     this.game = game
-    this.width = this.game.columns * this.game.enemySize
+    this.width = this.game.columns * (this.game.enemySize + this.game.enemyGap)
     this.height = this.game.rows * this.game.enemySize
-    this.x = 0
+    this.x = this.game.width * 0.5 - this.width * 0.5
     this.y = -this.height
-    this.speedX = 15
+    this.speedX = Math.random() < 0.5 ? -1 : 1
     this.speedY = 0
     this.enemies = []
     this.nextWaveTrigger = false
@@ -155,9 +229,9 @@ class Wave {
   create() {
     for (let y = 0; y < this.game.rows; y++) {
       for (let x = 0; x < this.game.columns; x++) {
-        let enemyX = x * this.game.enemySize
+        let enemyX = x * (this.game.enemySize + this.game.enemyGap)
         let enemyY = y * this.game.enemySize
-        this.enemies.push(new Enemy(this.game, enemyX, enemyY))
+        this.enemies.push(new Beetlemorph(this.game, enemyX, enemyY))
       }
     }
   }
@@ -172,17 +246,22 @@ class Game {
     this.player = new Player(this)
 
     this.projectilePool = []
-    this.numberOfProjectile = 10
+    this.numberOfProjectile = 15
     this.createProjectiles()
     this.fired = false
 
-    this.columns = 2
-    this.rows = 2
-    this.enemySize = 60
+    this.columns = 1
+    this.rows = 1
+    this.enemySize = 80
+    this.enemyGap = 20
 
     this.waves = []
     this.waves.push(new Wave(this))
     this.waveCount = 1
+
+    this.spriteUpdate = false
+    this.spriteTimer = 0
+    this.spriteInterval = 150
 
     this.score = 0
     this.gameOver = false
@@ -203,7 +282,16 @@ class Game {
     })
   }
 
-  render(context) {
+  render(context, deltaTime) {
+    // sprite timing
+    if (this.spriteTimer > this.spriteInterval) {
+      this.spriteUpdate = true
+      this.spriteTimer = 0
+    } else {
+      this.spriteUpdate = false
+      this.spriteTimer += deltaTime
+    }
+
     this.drawStatusText(context)
     this.player.draw(context)
     this.player.update()
@@ -217,7 +305,7 @@ class Game {
         this.newWave()
         this.waveCount++
         wave.nextWaveTrigger = true
-        this.player.lives++
+        if (this.player.lives < this.player.maxLives) this.player.lives++
       }
     })
   }
@@ -250,8 +338,11 @@ class Game {
     context.shadowColor = 'black'
     context.fillText('Score: ' + this.score, 20, 40)
     context.fillText('Wave: ' + this.waveCount, 20, 80)
+    for (let i = 0; i < this.player.maxLives; i++) {
+      context.strokeRect(20 + 20 * i, 100, 10, 15)
+    }
     for (let i = 0; i < this.player.lives; i++) {
-      context.fillRect(20 + 10 * i, 100, 5, 20)
+      context.fillRect(20 + 20 * i, 100, 10, 15)
     }
     if (this.gameOver) {
       context.textAlign = 'center'
@@ -302,14 +393,17 @@ window.addEventListener('load', function () {
   canvas.height = 800
   ctx.fillStyle = 'white'
   ctx.strokeStyle = 'white'
-  ctx.lineWidth = 5
   ctx.font = '30px Impact'
 
   const game = new Game(canvas)
-  function animate() {
+
+  let lastTime = 0
+  function animate(timeStamp) {
+    const deltaTime = timeStamp - lastTime
+    lastTime = timeStamp
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    game.render(ctx)
+    game.render(ctx, deltaTime)
     requestAnimationFrame(animate)
   }
-  animate()
+  animate(0)
 })
